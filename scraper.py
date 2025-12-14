@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import re
+import db_updater
 
 WIG20 = 20
 
@@ -12,16 +13,22 @@ response.raise_for_status()
 soup = BeautifulSoup(response.text, "html.parser")
 rows = soup.find_all("tr")
 
+symbols = []
+values = []
+
 wig_number = 0
 for row in rows:
     text = str(row)
-    if str(row).startswith("<tr "):
+    if text.startswith("<tr "):
         symbol = re.search(r'\?symbol=(\w+)', text).group(1)
-        raw_value = re.search(r'>([\d,]+)\d<', text).group(1)
+        raw_value = re.search(r'>((?<=">)[\d]*[ ]?[\d]{1,3}[,][\d]+(?=<))<', text).group(1)
         value = raw_value.replace(',', '.') 
-
-        print(symbol)
-        print(value)
+        value = value.replace('\xa0', '') 
+        symbols.append(symbol)
+        values.append(float(value))
+        print(symbol+" "+value)
         wig_number+=1
     if wig_number == WIG20:
         break
+
+db_updater.insert(values, symbols)
