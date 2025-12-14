@@ -22,11 +22,14 @@ for row in rows:
     if text.startswith("<tr "):
         symbol = re.search(r'\?symbol=(\w+)', text).group(1)
         raw_value = re.search(r'>((?<=">)[\d]*[ ]?[\d]{1,3}[,][\d]+(?=<))<', text).group(1)
+        raw_number = re.search(r'>((?<=">)([\d]{1,3} )+[\d]{1,3}(?=<))<', text).group(1)
+        number = raw_number.replace('\xa0', '')
         value = raw_value.replace(',', '.') 
         value = value.replace('\xa0', '') 
         symbols.append(symbol)
         values.append(float(value))
-        print(symbol+" "+value)
+        total_value = int(float(value)*int(number))
+        print(symbol+" "+value+" "+number+" "+str(total_value))
         wig_number+=1
     if wig_number == WIG20:
         break
