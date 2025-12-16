@@ -15,6 +15,7 @@ rows = soup.find_all("tr")
 
 symbols = []
 values = []
+marketcaps = []
 
 wig_number = 0
 for row in rows:
@@ -28,10 +29,10 @@ for row in rows:
         value = value.replace('\xa0', '') 
         symbols.append(symbol)
         values.append(float(value))
-        total_value = int(float(value)*int(number))
-        print(symbol+" "+value+" "+number+" "+str(total_value))
+        marketcaps.append(int(float(value)*int(number)))
+        print(symbol+" "+value+" "+number)
         wig_number+=1
     if wig_number == WIG20:
         break
 
-db_updater.insert(values, symbols)
+db_updater.insert(values, symbols, marketcaps)
