@@ -6,6 +6,7 @@ services:
     container_name: wig20_db
     restart: always
     environment:
+      # Tutaj Docker weźmie dane z Twojego pliku .env
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
@@ -26,7 +27,6 @@ services:
     ports:
       - "11434:11434"
 
-
   api:                     
     build: .
     container_name: wig20_api
@@ -40,10 +40,25 @@ services:
     environment:
       DB_HOST: db
       OLLAMA_HOST: ollama
+      # Tutaj API weźmie nowe hasło Agenta
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
 
+  mcp:
+    build: .
+    container_name: wig20_mcp
+    command: uvicorn mcp_server:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Tutaj MCP weźmie nowe hasło Agenta (poprawione!)
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
 
   scraper:
     build: .                      
@@ -54,14 +69,10 @@ services:
       db:                         
         condition: service_healthy
     environment:                  
+      # Scraper też musi znać nowego użytkownika
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
-
-
-
-
-
 
 volumes:
   mysql_data:
