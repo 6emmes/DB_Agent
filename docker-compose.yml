@@ -21,6 +21,7 @@ services:
     image: ollama/ollama:latest
     container_name: wig20_ai
     restart: always
+    command: "> ollama pull qwen3:1.7b && ollama serve"
     volumes:
       - ollama_data:/root/.ollama
     ports:

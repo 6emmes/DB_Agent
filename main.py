@@ -64,7 +64,7 @@ def ask_agent(query: UserQuery):
     
     ollama_url = "http://ollama:11434/api/generate"
     payload = {
-        "model": "qwen2.5:3b",
+        "model": "qwen3:1.7b",
         "prompt": full_prompt,
         "stream": False
     }
