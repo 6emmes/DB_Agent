@@ -1,0 +1,134 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         MCP ARCHITECTURE COMPARISON                          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+BEFORE REFACTORING (❌ Incorrect MCP Usage)
+════════════════════════════════════════════════════════════════════════════════
+
+mcp_server.py:
+┌──────────────────────────────────────────┐
+│ TOOLS ONLY                               │
+├──────────────────────────────────────────┤
+│ ✓ get_stock_price(company_name)         │  ← Using TOOL for data access
+│   └─ Returns: "PKO costs 45.30"         │  ← Should be RESOURCE!
+└──────────────────────────────────────────┘
+
+main.py:
+┌────────────────────────────────────────────────┐
+│ USER QUERY → KEYWORD EXTRACTION → TOOL CALL   │
+├────────────────────────────────────────────────┤
+│ "Jaka jest cena PKO?"                         │
+│   ↓                                           │
+│ Extract every word > 2 chars: [Jaka, jest...] │ ← Dumb heuristic
+│   ↓                                           │
+│ Try each: call_tool("get_stock_price", word) │ ← Multiple calls!
+│   ↓                                           │
+│ Get first successful response                │
+│   ↓                                           │
+│ Send to Ollama without guidance              │
+│   ↓                                           │
+│ Response                                      │
+└────────────────────────────────────────────────┘
+
+Problems:
+  ❌ Using TOOLS for data retrieval (semantically wrong)
+  ❌ Multiple unnecessary MCP calls (inefficient)
+  ❌ No proper prompts for analysis guidance
+  ❌ All decisions hardcoded (not flexible)
+  ❌ Dumb keyword extraction fails on complex queries
+
+
+AFTER REFACTORING (✅ Correct MCP Usage)
+════════════════════════════════════════════════════════════════════════════════
+
+mcp_server.py:
+┌─────────────────────────────────────┐
+│ RESOURCES (Data)                    │
+├─────────────────────────────────────┤
+│ ✓ stock://wig20/all                 │ ← Pure data access
+│ ✓ stock://wig20/prices              │ ← Read-only
+│   └─ Returns: JSON with all prices  │ ← Structured response
+└─────────────────────────────────────┘
+┌─────────────────────────────────────┐
+│ TOOLS (Actions)                     │
+├─────────────────────────────────────┤
+│ ✓ set_price_alert(...)              │ ← Modifies state
+│   └─ Returns: Alert confirmation    │ ← Has side effects
+└─────────────────────────────────────┘
+┌─────────────────────────────────────┐
+│ PROMPTS (Guidance)                  │
+├─────────────────────────────────────┤
+│ ✓ analyze_stock                     │ ← Analysis instructions
+│ ✓ compare_stocks                    │ ← Comparison guidance
+│ ✓ market_overview                   │ ← Market framework
+│   └─ Returns: Instructions + data   │
+└─────────────────────────────────────┘
+
+main.py:
+┌──────────────────────────────────────────────────────┐
+│ USER QUERY → LLM DECISION → ACTION → RESPONSE       │
+├──────────────────────────────────────────────────────┤
+│ "Jaka jest cena PKO?"                               │
+│   ↓                                                 │
+│ Call llm_decide_action():                           │ ← Smart routing
+│   ├─ "read_resource" (simple data)                 │
+│   ├─ "get_prompt_analyze" (single stock)           │
+│   ├─ "get_prompt_compare" (multiple stocks)        │
+│   ├─ "get_prompt_overview" (market)                │
+│   └─ "call_tool_alert" (action)                    │
+│   ↓                                                 │
+│ Ollama decides: "This is data query" →             │
+│   ACTION: read_resource                            │
+│   ↓                                                 │
+│ Call get_mcp_data("stock://wig20/all") ← ONCE!     │
+│   ↓                                                 │
+│ Get JSON: {stocks: [{name: PKO, price: 45.30}...]} │
+│   ↓                                                 │
+│ Send to Ollama with data context                   │
+│   ↓                                                 │
+│ Response: "PKO costs 45.30"                         │
+└──────────────────────────────────────────────────────┘
+
+Additional Example: "Jak się ma PKO?"
+┌──────────────────────────────────────────────────────┐
+│ "Jak się ma PKO?"                                   │
+│   ↓                                                 │
+│ llm_decide_action() → "get_prompt_analyze"        │ ← Smart!
+│   ACTION: get_prompt_analyze                       │
+│   SYMBOLS: PKO                                     │
+│   ↓                                                 │
+│ get_mcp_prompt("analyze_stock", {symbol: "PKO"})  │
+│   ↓                                                 │
+│ Server returns analysis prompt + price data:       │
+│   "You are analyst...                              │
+│    Price history: [45.30, 45.20, ...]             │
+│    Analyze: trend, movement, observation, rec"   │
+│   ↓                                                 │
+│ Send ENTIRE prompt to Ollama                       │
+│   ↓                                                 │
+│ Ollama follows instructions → structured analysis  │
+└──────────────────────────────────────────────────────┘
+
+Benefits:
+  ✅ Proper MCP patterns (Resources for data, Tools for actions, Prompts for guidance)
+  ✅ Smart routing (LLM decides, not hardcoded heuristics)
+  ✅ Single MCP call per request (efficient)
+  ✅ Prompts guide analysis (explicit instructions)
+  ✅ Structured responses (JSON from resources)
+  ✅ Flexible and extensible
+
+
+COMPARISON TABLE
+════════════════════════════════════════════════════════════════════════════════
+
+Feature                 │ Before           │ After
+────────────────────────┼──────────────────┼──────────────────────
+Data Access             │ Tool (❌ wrong)   │ Resource (✅ correct)
+Action Execution        │ -                │ Tool (✅ correct)
+Analysis Guidance       │ None (❌ bad)    │ Prompt (✅ good)
+Routing Logic           │ Hardcoded (❌)   │ LLM decision (✅)
+Keyword Extraction      │ Heuristic (❌)   │ Intelligent (✅)
+MCP Calls per Query     │ 1-N (❌ waste)   │ 1 (✅ efficient)
+Extensibility           │ Hard (❌)        │ Easy (✅)
+Security                │ Risky (❌)       │ Safe (✅)
+

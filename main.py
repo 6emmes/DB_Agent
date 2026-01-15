@@ -2,89 +2,160 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import requests
 import os
-# Importujemy klienta MCP zamiast bazy danych
-from mcp.client.session import ClientSession
-from mcp.client.sse import sse_client
+import mysql.connector
 
 app = FastAPI()
 
 class UserQuery(BaseModel):
     prompt: str
 
-# Adres serwera MCP (wewnątrz sieci Docker to nazwa usługi "mcp")
-MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp:8001/sse")
+def get_db_connection():
+    """Connect to MySQL database"""
+    return mysql.connector.connect(
+        host="db",
+        user=os.getenv("MYSQL_USER"),
+        password=os.getenv("MYSQL_PASSWORD"),
+        database=os.getenv("MYSQL_DATABASE")
+    )
 
-async def query_mcp_tool(query_text: str):
-    """
-    Ta funkcja łączy się z serwerem MCP i prosi go o użycie narzędzia.
-    """
-    print(f"🔌 Łączenie z MCP pod adresem: {MCP_SERVER_URL}...")
-    
+def get_stock_price(symbol: str) -> dict:
+    """Get current stock price from database"""
     try:
-        # Nawiązujemy połączenie z serwerem MCP
-        async with sse_client(MCP_SERVER_URL) as streams:
-            async with ClientSession(streams[0], streams[1]) as session:
-                # 1. Inicjalizacja sesji
-                await session.initialize()
-                
-                # 2. Logika wyboru słowa kluczowego (prosta heurystyka)
-                # Szukamy w pytaniu słowa dłuższego niż 2 znaki (potencjalna nazwa spółki)
-                words = query_text.split()
-                found_info = None
-                
-                for word in words:
-                    clean_word = word.strip("?,.!").upper()
-                    if len(clean_word) < 3: continue
-                    
-                    try:
-                        # 3. WYWOŁANIE NARZĘDZIA MCP
-                        # "Brain" prosi "Hands" o dane.
-                        result = await session.call_tool(
-                            "get_stock_price",
-                            arguments={"company_name": clean_word}
-                        )
-                        
-                        # Sprawdzamy wynik
-                        text_result = result.content[0].text
-                        
-                        # Jeśli wynik nie zaczyna się od błędu/nie znaleziono, to bierzemy
-                        if "Znaleziono" in text_result:
-                            found_info = text_result
-                            break 
-                            
-                    except Exception as e:
-                        print(f"⚠️ Błąd przy pytaniu o {clean_word}: {e}")
-                        continue
-                
-                return found_info
-
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        query = """
+            SELECT s.name, p.value as price, p.time
+            FROM Prices p
+            JOIN Symbols s ON p.symbol_id = s.id
+            WHERE UPPER(s.name) LIKE %s
+            ORDER BY p.time DESC
+            LIMIT 1
+        """
+        cursor.execute(query, (f"%{symbol.upper()}%",))
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        return result if result else None
     except Exception as e:
-        print(f"❌ Błąd ogólny połączenia z MCP: {e}")
+        print(f"❌ [DB] Error: {e}")
         return None
+
+def get_all_prices() -> list:
+    """Get all stock prices from database"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        query = """
+            SELECT s.name, p.value as price, p.time
+            FROM Prices p
+            JOIN Symbols s ON p.symbol_id = s.id
+            WHERE p.time = (SELECT MAX(time) FROM Prices)
+            ORDER BY s.name
+        """
+        cursor.execute(query)
+        results = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return results if results else []
+    except Exception as e:
+        print(f"❌ [DB] Error: {e}")
+        return []
+
+def extract_symbols(text: str) -> list:
+    """Extract company symbols from text"""
+    symbols = ["PKO", "PZU", "PKNORLEN", "ORLEN", "ALIOR", "ALLEGRO", "SANTANDER", 
+               "KGHM", "EUROCASH", "JSBANK", "MBANK", "PLAY", "ING", "POWERENERGY"]
+    
+    found = []
+    for symbol in symbols:
+        if symbol.lower() in text.lower():
+            found.append(symbol)
+    
+    return found
 
 @app.post("/ask")
 async def ask_agent(query: UserQuery):
     user_text = query.prompt
+    print(f"\n📝 User query: {user_text}")
     
-    # --- KROK 1: Pobranie danych przez MCP ---
-    mcp_result = await query_mcp_tool(user_text)
+    query_lower = user_text.lower()
     
-    if mcp_result:
-        context = f"[SYSTEM INFO Z MCP]: {mcp_result}"
+    # Decide what data to fetch
+    if any(word in query_lower for word in ["porównaj", "compare", "lepszy", "który"]):
+        # Compare stocks
+        symbols = extract_symbols(user_text)
+        if symbols:
+            data_list = []
+            for symbol in symbols:
+                price_data = get_stock_price(symbol)
+                if price_data:
+                    data_list.append(f"{price_data['name']}: {price_data['price']} PLN")
+            context = "Porównanie:\n" + "\n".join(data_list) if data_list else "Brak danych"
+        else:
+            context = "Nie znaleziono symboli do porównania"
+    
+    elif any(word in query_lower for word in ["analiz", "analyze", "jak się", "jak wygląd"]):
+        # Analyze single stock
+        symbols = extract_symbols(user_text)
+        if symbols:
+            price_data = get_stock_price(symbols[0])
+            if price_data:
+                context = f"{price_data['name']}: {price_data['price']} PLN (aktualizacja: {price_data['time']})"
+            else:
+                context = f"Brak danych dla: {symbols[0]}"
+        else:
+            context = "Nie znaleziono symbolu"
+    
+    elif any(word in query_lower for word in ["rynek", "market", "wig20", "indeks", "wszystkie", "wszystko"]):
+        # Market overview
+        prices = get_all_prices()
+        if prices:
+            price_list = "\n".join([f"  - {p['name']}: {p['price']} PLN" for p in prices])
+            context = f"Ceny WIG20:\n{price_list}"
+        else:
+            context = "Brak danych giełdowych"
+    
     else:
-        context = "[SYSTEM INFO]: Nie znaleziono danych w bazie MCP dla tego zapytania."
+        # Default: get prices
+        symbols = extract_symbols(user_text)
+        if symbols:
+            price_data = get_stock_price(symbols[0])
+            if price_data:
+                context = f"{price_data['name']}: {price_data['price']} PLN"
+            else:
+                context = f"Brak danych dla: {symbols[0]}"
+        else:
+            # Get all prices
+            prices = get_all_prices()
+            if prices:
+                price_list = "\n".join([f"  - {p['name']}: {p['price']} PLN" for p in prices[:5]])
+                context = f"Ceny WIG20 (top 5):\n{price_list}"
+            else:
+                context = "Brak danych giełdowych w bazie"
 
-    # --- KROK 2: Przygotowanie Promptu dla AI ---
-    system_instruction = (
-        "Jesteś asystentem giełdowym WIG20. "
-        "Masz dostęp do narzędzia MCP, które dostarcza aktualne ceny. "
-        "Odpowiadaj WYŁĄCZNIE na podstawie dostarczonego [SYSTEM INFO]. "
-        "Jeśli informacji nie ma, powiedz to wprost."
-    )
+    # Build prompt for Ollama - VERY EXPLICIT
+    # Use simple, clear instructions
+    if "Brak danych" in context:
+        full_prompt = f"""You are a stock assistant. You only have this data:
+{context}
 
-    full_prompt = f"{system_instruction}\n\nKONTEKST:\n{context}\n\nPYTANIE UŻYTKOWNIKA:\n{user_text}"
+User question: {user_text}
 
-    # --- KROK 3: Wysłanie do Ollamy ---
+Answer: The requested stock data is not available."""
+    else:
+        # Data is available, use it directly
+        full_prompt = f"""You are a stock assistant. Answer based ONLY on this data:
+{context}
+
+User question: {user_text}
+
+Answer: Simply state the stock name and price in PLN. Do not add extra information. Be short and direct."""
+
+    # Send to Ollama - using larger 3B model for better reliability
     ollama_url = "http://ollama:11434/api/generate"
     payload = {
         "model": "qwen2.5:3b",
@@ -93,13 +164,13 @@ async def ask_agent(query: UserQuery):
     }
 
     try:
-        response = requests.post(ollama_url, json=payload)
+        response = requests.post(ollama_url, json=payload, timeout=120)
         response.raise_for_status()
         ai_reply = response.json().get("response", "")
     except Exception as e:
-        ai_reply = f"Błąd komunikacji z modelem AI: {str(e)}"
+        ai_reply = f"Błąd Ollama: {str(e)}"
 
     return {
         "response": ai_reply,
-        "used_context": context
+        "context_used": context
     }

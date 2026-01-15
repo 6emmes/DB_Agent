@@ -44,7 +44,7 @@ def main():
             # 2. Wyślij do API
             payload = {"prompt": user_input}
             try:
-                response = requests.post(API_URL, json=payload, timeout=30)
+                response = requests.post(API_URL, json=payload, timeout=120)  # Increased to 2 minutes
                 response.raise_for_status()
                 data = response.json()
                 
@@ -60,10 +60,10 @@ def main():
 
             # 3. Wyświetl wynik
             # Opcjonalnie: Pokaż co agent znalazł w bazie (debug)
-            if "Znaleziono" in used_context:
-                print(f"\n{BOLD}[DEBUG BAZY DANYCH]:{RESET} {used_context}")
+            if "Cena" in ai_response or "cena" in ai_response.lower() or len(ai_response) > 10:
+                print(f"\n{BOLD}[CONTEXT]:{RESET} {used_context[:100]}...")
             else:
-                 print(f"\n{BOLD}[DEBUG BAZY DANYCH]:{RESET} Brak danych w bazie.")
+                 print(f"\n{BOLD}[CONTEXT]:{RESET} Brak danych w bazie.")
 
             print(f"\n{GREEN}AGENT >> {RESET}", end="")
             type_writer(ai_response)
