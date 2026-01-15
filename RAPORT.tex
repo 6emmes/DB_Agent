@@ -1,0 +1,759 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[polish]{babel}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{float}
+
+\geometry{margin=2cm}
+\setlength{\parskip}{0.4cm}
+
+\lstset{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{red},
+    breaklines=true,
+    backgroundcolor=\color{lightgray!10},
+    frame=single,
+    captionpos=b
+}
+
+\title{\textbf{WIG20 Agent System} \\ \normalsize Dokumentacja Techniczna}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\newpage
+
+\section{Streszczenie}
+
+Projekt WIG20 Agent to zaawansowany system do automatycznego pobierania, przechowywania i analizy danych gieldowych z indeksu WIG20. Rozwiazanie integruje nowoczesne technologie web scrapingu, relacyjne bazy danych (MySQL) oraz model sztucznej inteligencji (Ollama) do odpowiadania na pytania uzytkownikow w jezyku naturalnym.
+
+System realizuje kompleksowy przepyw danych zaczynajacy sie od pobrania informacji z portalu finansowego Bankier.pl, poprzez przechowywanie w bazie danych, az do prezentacji wynikow uzytkownikowi za pomoca inteligentnego agenta AI.
+
+\textbf{Glowne mozliwosci:}
+\begin{itemize}
+    \item Automatyczne i okresowe pobieranie cen akcji ze strony Bankier.pl
+    \item Przechowywanie danych w strukturyzowanej bazie MySQL z historia aktualizacji
+    \item REST API do wysylania zapytan i komunikacji z systemem
+    \item Inteligentne odpowiedzi na pytania uzytkownikow za pomoca modelu Ollama
+    \item Obsuga wielu jezykow (polski i angielski)
+\end{itemize}
+
+\section{Cel i Zakres Projektu}
+
+Celem projektu jest stworzenie narzedzia do:
+
+\begin{enumerate}
+    \item \textbf{Automatyzacji pobierania danych} - system periodycznie skanuje strone Bankier.pl i ekstrahuje dane o cenach akcji spółek wchodzacych w sklad indeksu WIG20
+    \item \textbf{Przechowywania danych} - wszystkie zebrane dane sa zapisywane w bazie MySQL z metadanymi czasowymi
+    \item \textbf{Udostepniania interfejsu} - REST API umozliwia komunikacje z systemem poprzez zapytania HTTP
+    \item \textbf{Analizy inteligentnej} - model AI (Ollama) przetwaza pytania uzytkownikow i generuje odpowiedzi oparte na aktualnych danych
+\end{enumerate}
+
+\section{Funkcjonalnosc}
+
+System oferuje nastepujace funkcjonalnosci:
+
+\subsection{Pobieranie Danych}
+
+Automatyczne pobranie danych z Bankier.pl obejmuje:
+\begin{itemize}
+    \item Symbole handlowe spółek (np. PKO, PKNORLEN, ORLEN)
+    \item Ceny akcji wyrazone w PLN
+    \item Kapitalizacje rynkowe spółek
+    \item Znaczniki czasowe (timestamp) kazdego pobrania
+\end{itemize}
+
+\subsection{Baza Danych}
+
+MySQL przechowuje:
+\begin{itemize}
+    \item Tabele \texttt{Symbols} - liste wszystkich spółek z ich kapitalizacja
+    \item Tabele \texttt{Prices} - historie cen z datami aktualizacji
+    \item Unikatowe indeksy zapobiegajace duplikatom
+    \item Relacje miedzy tabelami poprzez klucze obce
+\end{itemize}
+
+\subsection{API REST}
+
+Endpoint POST /ask umozliwia:
+\begin{itemize}
+    \item Wysylanie zapytan w jezyku naturalnym
+    \item Klasyfikacje intencji zapytania (porownanie, analiza, przeglad)
+    \item Pobieranie odpowiednich danych z bazy
+    \item Zwracanie wzbogaconych odpowiedzi
+\end{itemize}
+
+\subsection{AI i Przetwarzanie Jezyka}
+
+Ollama z modelem Qwen2.5 odpowiada za:
+\begin{itemize}
+    \item Rozumienie zapytan w jezyku polskim i angielskim
+    \item Porownywanie spółek na podstawie danych
+    \item Analize trendow rynkowych
+    \item Generowanie naturalnych odpowiedzi dla uzytkownika
+\end{itemize}
+
+\section{Architektura Systemu}
+
+\subsection{Komponenty}
+
+System sklada sie z czterech glownych komponentów:
+
+\subsubsection{scraper.py - Pobieranie Danych}
+
+Modul odpowiedzialny za:
+\begin{itemize}
+    \item Wysylanie zapytan HTTP do Bankier.pl
+    \item Parsowanie odpowiedzi HTML przy uzyciu BeautifulSoup
+    \item Ekstrakcje danych za pomoca wyrazow regularnych (regex)
+    \item Obsluge bledów i ponowne probowanie w przypadku niepowodzenia
+    \item Emulacje przegladarki poprzez User-Agent (unikanie blokady)
+\end{itemize}
+
+\subsubsection{db\_updater.py - Aktualizacja Bazy}
+
+Warstwa bazodanowa zajmujaca sie:
+\begin{itemize}
+    \item Tworzeniem tabel (Symbols, Prices) przy pierwszym uruchomieniu
+    \item Zapisywaniem danych z scrapera do MySQL
+    \item Operacjami UPSERT dla idempotentnosci
+    \item Obsuga duplikatow poprzez unikatowe indeksy
+    \item Logowaniem i raportowaniem bledów
+\end{itemize}
+
+\subsubsection{main.py - REST API}
+
+FastAPI serwer dostarczajacy:
+\begin{itemize}
+    \item Endpoint \texttt{POST /ask} do wysylania pytań
+    \item Klasyfikacje typu zapytania (porownanie/analiza/przeglad)
+    \item Logike pobierania danych z bazy na podstawie zapytania
+    \item Integracje z modelem Ollama
+    \item Dokumentacje API (Swagger UI na \texttt{/docs})
+\end{itemize}
+
+\subsubsection{mcp\_server.py - Model Context Protocol}
+
+Zaawansowany serwer komunikacyjny oferujacy:
+\begin{itemize}
+    \item Zasoby (resources): \texttt{stock://wig20/all}, \texttt{stock://wig20/prices}
+    \item Narzedzia (tools): \texttt{set\_price\_alert}
+    \item Transport Server-Sent Events (SSE) dla aktualizacji real-time
+    \item Wsparcie dla zaawansowanych integracji
+\end{itemize}
+
+\section{Technologie}
+
+\subsection{Stack Techniczny}
+
+\begin{itemize}
+    \item \textbf{Python 3.11} - jezyk programowania (wydajny, zrodla open-source)
+    \item \textbf{FastAPI} - nowoczesny framework do budowy REST API
+    \item \textbf{Uvicorn} - szybki serwer ASGI
+    \item \textbf{MySQL 8.0} - relacyjna baza danych
+    \item \textbf{BeautifulSoup4} - parsing HTML
+    \item \textbf{requests} - HTTP client dla Pythona
+    \item \textbf{Pydantic} - walidacja danych i type hints
+    \item \textbf{Ollama} - framework dla modeli LLM
+    \item \textbf{Qwen2.5} - model AI/LLM
+    \item \textbf{Docker Compose} - orkiestracja kontenerow
+\end{itemize}
+
+\subsection{Wymagania Systemowe}
+
+\begin{itemize}
+    \item Python 3.11 lub nowszy
+    \item Docker 20.10+
+    \item Docker Compose 1.29+
+    \item RAM: minimum 4GB (zalecane 8GB dla Ollama)
+    \item Dysk: minimum 10GB na baze danych i model AI
+    \item Dostep do internetu dla pobrania modelu Qwen2.5
+\end{itemize}
+
+\section{Deployment i Infrastruktura}
+
+\subsection{Docker Compose}
+
+System uruchamia sie w czterech izolowanych kontenerach:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Nazwa} & \textbf{Obraz} & \textbf{Port} & \textbf{Opis} \\
+\hline
+db & mysql:8.0 & 3306 & Baza danych MySQL \\
+ollama & ollama/ollama & 11434 & Model AI/LLM \\
+api & local/wig20:latest & 8000 & FastAPI service \\
+mcp & local/wig20:latest & - & MCP Server \\
+\hline
+\end{tabular}
+\caption{Serwisy Docker Compose}
+\end{table}
+
+\subsection{Health Checks i Zaleznosci}
+
+System implementuje:
+\begin{itemize}
+    \item Health check dla MySQL: \texttt{mysqladmin ping -h localhost}
+    \item Timeout: 20 sekund
+    \item Liczba prob: 10 ponownych prob
+    \item Zaleznosci: API i MCP czekaja na gotowość bazy danych
+    \item Uruchamianie w okreslonym porzadku dla spójnosci
+\end{itemize}
+
+\subsection{Konfiguracja Zmiennych Srodowiskowych}
+
+Plik \texttt{.env} zawiera:
+\begin{lstlisting}
+MYSQL_ROOT_PASSWORD=haslo_root
+MYSQL_DATABASE=wig20
+MYSQL_USER=agent
+MYSQL_PASSWORD=haslo_agenta
+\end{lstlisting}
+
+\section{Przepyw Danych i Architektura}
+
+\subsection{Sekwencja Zdarzen}
+
+Pełny przepyw danych:
+
+\begin{enumerate}
+    \item \textbf{Pobranie}: Scraper wysyla zapytanie do Bankier.pl
+    \item \textbf{Parsing}: BeautifulSoup ekstrahuje HTML i wydobywa dane
+    \item \textbf{Zapis}: db\_updater zapisuje dane do MySQL z deduplicacja
+    \item \textbf{Zapytanie}: Uzytkownik wysyla POST na /ask
+    \item \textbf{Klasyfikacja}: API okresla typ zapytania
+    \item \textbf{Pobieranie}: Zapytania SQL pobieraja relewalntne dane
+    \item \textbf{AI}: Dane wysylane do Ollamy z promptem
+    \item \textbf{Odpowiedz}: Model generuje tekst i zwraca uzytkownikowi
+\end{enumerate}
+
+\subsection{Diagram Przepywu}
+
+\begin{verbatim}
+Bankier.pl
+    |
+    | HTML
+    v
+Scraper (scraper.py)
+    |
+    | Symbole, Ceny
+    v
+DB Updater (db_updater.py)
+    |
+    | SQL INSERT/UPDATE
+    v
+MySQL Database
+    |
+    | SQL SELECT
+    v
+FastAPI (main.py)
+    |
+    | Dane + Prompt
+    v
+Ollama (Model AI)
+    |
+    | Tekst odpowiedzi
+    v
+Uzytkownik/Client
+\end{verbatim}
+
+\section{Interfejs API}
+
+\subsection{Endpoint POST /ask}
+
+Glowny endpoint do komunikacji z systemem.
+
+\textbf{Request:}
+\begin{lstlisting}[language=json]
+POST /ask HTTP/1.1
+Content-Type: application/json
+
+{
+  "prompt": "Porowniaj PKO i PKNORLEN"
+}
+\end{lstlisting}
+
+\textbf{Response:}
+\begin{lstlisting}[language=json]
+{
+  "response": "PKO Bank Polski handluje na poziomie 35.50 PLN, 
+              podczas gdy PKNORLEN na 34.20 PLN. 
+              PKO jest drozsze o 1.30 PLN...",
+  "data": {...}
+}
+\end{lstlisting}
+
+\subsection{Przyklady Zapytan}
+
+\subsubsection{Porownanie Spółek}
+
+\texttt{Zapytanie}: "Porowniaj PKO z PZU"
+
+\texttt{Odpowiedz}: System pobiera ceny obu spółek z bazy i generuje porownanie oparte na danych.
+
+\subsubsection{Przeglad Rynku}
+
+\texttt{Zapytanie}: "Jaki jest stan rynku WIG20?"
+
+\texttt{Odpowiedz}: Pobieranie wszystkich aktualnych cen i generowanie ogolnego przeglądu.
+
+\subsubsection{Analiza Pojedynczej Spółki}
+
+\texttt{Zapytanie}: "Analiza ALLEGRO"
+
+\texttt{Odpowiedz}: Dane o spółce z historichnym kontekstem i analiza.
+
+\section{Baza Danych}
+
+\subsection{Schemat Tabel}
+
+\subsubsection{Tabela Symbols}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Kolumna} & \textbf{Typ} & \textbf{Opis} \\
+\hline
+id & INT PRIMARY KEY & Identyfikator unikatowy \\
+name & VARCHAR(255) UNIQUE & Symbol spółki (PKO, PKNORLEN itp.) \\
+market\_cap & FLOAT & Kapitalizacja rynkowa \\
+\hline
+\end{tabular}
+\caption{Struktura tabeli Symbols}
+\end{table}
+
+\subsubsection{Tabela Prices}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Kolumna} & \textbf{Typ} & \textbf{Opis} \\
+\hline
+id & INT PRIMARY KEY & Identyfikator unikatowy \\
+symbol\_id & INT FOREIGN KEY & Odniesienie do Symbols \\
+value & FLOAT & Cena akcji w PLN \\
+time & DATETIME & Czas pobrania danych \\
+\hline
+\end{tabular}
+\caption{Struktura tabeli Prices}
+\end{table}
+
+\subsection{Operacje na Bazie}
+
+System wykorzystuje operacje:
+\begin{itemize}
+    \item \textbf{INSERT ... ON DUPLICATE KEY UPDATE} - idempotentne zapisywanie
+    \item \textbf{UNIQUE(symbol\_id, time)} - unikanie duplikatów cen
+    \item \textbf{FOREIGN KEY} - konsystencja danych
+    \item \textbf{INDEX} - szybkie wyszukiwanie
+\end{itemize}
+
+\section{Bezpieczenstwo}
+
+\subsection{Implementowane Mechanizmy}
+
+\begin{itemize}
+    \item \textbf{Hasła w .env}: Dane wrażliwe nie sa w kodzie
+    \item \textbf{Health Checks}: Sprawdzenie gotowosci serwisów
+    \item \textbf{Timeout}: Limity czasowe na polaczenia (10-20 sekund)
+    \item \textbf{Error Handling}: Logowanie bledów z kontekstem
+    \item \textbf{UNIQUE Constraints}: Zapobieganie duplikatom
+    \item \textbf{User-Agent Emulation}: Unikanie blokady przez scraper
+\end{itemize}
+
+\subsection{Zalecenia dla Produkcji}
+
+\begin{itemize}
+    \item Wdrozenie autentykacji API (JWT lub API keys)
+    \item Dodanie rate limiting na endpoint /ask
+    \item Szyfrowanie polaczen do MySQL (SSL/TLS)
+    \item Regularne aktualizacje zaleznosci Python
+    \item Monitoring i logowanie akcji uzytkownikow
+    \item Regularne backupy bazy danych
+    \item Wdrozenie WAF (Web Application Firewall)
+\end{itemize}
+
+\section{Instalacja i Urzadzanie}
+
+\subsection{Kroki Instalacji}
+
+\begin{enumerate}
+    \item Klonowanie repozytorium z GitHub
+    \item Konfiguracja pliku .env z hasłami
+    \item Budowa kontenerow Docker
+    \item Uruchomienie Docker Compose
+    \item Pobranie modelu Ollama (qwen2.5)
+    \item Weryfikacja dostepnosci API na http://localhost:8000
+\end{enumerate}
+
+\subsection{Komendy}
+
+\begin{lstlisting}[language=bash]
+# Uruchomienie
+docker-compose up -d
+
+# Zatrzymanie
+docker-compose down
+
+# Logi API
+docker logs wig20_api -f
+
+# Logi MySQL
+docker logs wig20_db -f
+
+# Status kontenow
+docker-compose ps
+\end{lstlisting}
+
+\subsection{Dostep do Serwisów}
+
+\begin{itemize}
+    \item \textbf{FastAPI}: http://localhost:8000
+    \item \textbf{Swagger UI}: http://localhost:8000/docs
+    \item \textbf{ReDoc}: http://localhost:8000/redoc
+    \item \textbf{Ollama}: http://localhost:11434
+    \item \textbf{MySQL}: localhost:3306 (uzytkownik: agent)
+\end{itemize}
+
+\section{Monitorowanie i Utrzymanie}
+
+\subsection{Logowanie}
+
+Wszystkie komponenty loguja do stdout / stderr:
+
+\begin{itemize}
+    \item API loguje zapytania, bledy, czasy odpowiedzi
+    \item Scraper loguje status pobrania i bledy polaczenia
+    \item DB Updater loguje operacje SQL
+    \item Ollama loguje inference requests
+\end{itemize}
+
+\subsection{Czyszczenie Bazy Danych}
+
+Zalecane operacje:
+
+\begin{lstlisting}[language=sql]
+-- Czyszczenie danych starszych niz 30 dni
+DELETE FROM Prices 
+WHERE time < DATE_SUB(NOW(), INTERVAL 30 DAY);
+
+-- Optymalizacja tabeli
+OPTIMIZE TABLE Prices;
+OPTIMIZE TABLE Symbols;
+
+-- Sprawdzenie rozmiaru
+SHOW TABLE STATUS LIKE 'Prices';
+\end{lstlisting}
+
+\section{Przyszłe Rozszerzenia}
+
+\subsection{Krotkoterminowe (1-2 miesiace)}
+
+\begin{itemize}
+    \item Alerty cenowe (email/SMS/push notification)
+    \item Cache Redis dla czestych zapytan
+    \item Filtry czasowe w /ask ("cena z ostatniego miesiaca")
+    \item Wsparcie dla innych indeksów (WIG, mWIG40, sWIG80)
+    \item Statystyki i wykresy cenowe
+\end{itemize}
+
+\subsection{Dlugotermionowe (3-6 miesiecy)}
+
+\begin{itemize}
+    \item Machine Learning dla predykcji cen
+    \item Frontend webowy (React/Vue.js)
+    \item Aplikacja mobilna (iOS/Android)
+    \item Integracja z platformami tradingowymi
+    \item Raportowanie i eksport danych (CSV, PDF)
+    \item Dashboard z wizualizacją danych
+    \item Wsparcie dla portfeli uzytkowników
+\end{itemize}
+
+\section{Struktura Projektu}
+
+\begin{verbatim}
+wig20-agent/
+├── main.py              # FastAPI server
+├── scraper.py           # Web scraping
+├── db_updater.py        # Database operations
+├── mcp_server.py        # MCP protocol server
+├── client.py            # Client implementation
+├── requirements.txt     # Python dependencies
+├── Dockerfile           # Container image
+├── docker-compose.yml   # Multi-container setup
+├── REPORT.md            # Markdown documentation
+├── RAPORT.tex           # LaTeX report
+├── .env.example         # Environment template
+├── .gitignore          # Git ignore rules
+└── __pycache__/        # Python cache
+\end{verbatim}
+
+\section{Podsumowanie}
+
+WIG20 Agent to kompleksowy, skalowany system do inteligentnej analizy danych gieldowych. Architektura oparta na mikroserwisach i konteneryzacji zapewnia łatwosc wdrozenia i utrzymania. Integracja z modelami AI umozliwia interaktywne odpowiadanie na pytania uzytkownikow w jezyku naturalnym.
+
+System automatycznie:
+\begin{itemize}
+    \item Pobiera i aktualizuje dane o cenach akcji
+    \item Przechowuje dane w strukturyzowanej bazie
+    \item Odpowiada na pytania uzytkownikow
+    \item DostarczaAPI REST do integracji
+\end{itemize}
+
+Projekt ma potencjal do dalszego rozwoju w kierunku zaawansowanej analizy finansowej, predykcji trendow i wsparcia dla decyzji inwestycyjnych.
+
+\end{document}
+
+\section{Funkcjonalność}
+
+System oferuje:
+\begin{itemize}
+    \item \textbf{Pobieranie}: Automatyczne pobranie danych z Bankier.pl (symbole, ceny, kapitalizacja)
+    \item \textbf{Baza danych}: MySQL przechowuje spółki i ceny historyczne
+    \item \textbf{API}: Endpoint POST /ask do wysyłania pytań
+    \item \textbf{AI}: Ollama odpowiada na pytania w języku polskim i angielskim
+\end{itemize}
+
+\section{Architektura Systemu}
+
+\subsection{Diagram architektury}
+
+\begin{verbatim}
+    ┌─────────────┐
+    │ Web Scraper │
+    │ (scraper.py)│
+    └──────┬──────┘
+           │
+           │ Dane o cenach
+           ▼
+    ┌─────────────────┐
+    │ Database Updater│
+    │(db_updater.py)  │
+    └──────┬──────────┘
+           │
+           ▼
+    ┌─────────────────┐
+    │  MySQL 8.0      │
+    │  Database       │
+    └────┬────────┬───┘
+         │        │
+         │        │
+    ┌────▼───┐  ┌─▼─────────┐
+    │FastAPI │  │MCP Server │
+    │API     │  │(mcp_server)
+    │main.py │  └─┬──────────┘
+    └────┬───┘    │
+         │        │
+         │ Zapytania
+         │        │
+    ┌────▼────────▼──}
+
+Komponenty systemu:
+\begin{enumerate}
+    \item \textbf{scraper.py} - pobiera dane z Bankier.pl (BeautifulSoup)
+    \item \textbf{db\_updater.py} - zapisuje dane do MySQL
+    \item \textbf{main.py} - REST API (FastAPI) na porcie 8000
+    \item \textbf{mcp\_server.py} - Model Context Protocol Server
+\end{enumerate}
+
+Przepływ: Web Scraper → MySQL ← FastAPI + Ollama ← Clientxtbf{Docker Compose}: 1.29+
+    \item \textbf{RAM}: 4GB minimum
+    \item \textbf{Dysk}: 10GB dla bazy danych i modelu Ollama
+\end{itemize}
+
+\subsection{Zależności Python}
+
+\begin{lstlisting}[caption=requirements.txt]
+fastapi          # Web framework
+uvicorn          # ASGI server
+mysql-connector-python  # MySQL driver
+python-dotenv    # Environment variables
+requests         # HTTP client
+pydantic         # Data validation
+beautifulsoup4   # HTML parsing
+mcp              # Model Context Protocol
+starlette        # ASGI toolkit
+\end{lstlisting}
+
+\section{Architektura Deployment}
+
+\subsection{Docker Compose}
+
+System uruchamia się w czterech kontenerach Docker:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Serwis} & \textbf{Obraz} & \textbf{Port} & \textbf{Opis} \\
+\hline
+db & mysql:8.0 & 3306 & Baza danych MySQL \\
+ollama & ollama/ollama & 11434 & Model AI \\
+api & local build & 8000 & FastAPI service \\
+mcp & local build & - & MCP Server \\
+\hline
+\end{tabular}
+\caption{Serwisy Docker Compose}
+\end{table}
+
+\subsection{Health Check i Dependency Ordering}
+
+\begin{itemize}
+    \item \textbf{DB Health Check}: \texttt{mysqladmin ping}
+    \item \textbf{Timeout}: 20 sekund
+    \item \textbf{Retries}: 10 prób
+    \item \textbf{Zależności}:
+    \begin{itemize}
+        \item API czeka na gotowość DB
+        \item API czeka na start Ollama
+        \item MCP czeka na gotowość DB
+    \end{itemize}
+\end{itemize}
+
+\subsection{Zmienne środowiskowe}
+
+Konfiguracja pobierana z pliku \texttt{.env}:
+
+\begin{lstlisting}[caption=Zmienne .env]
+MYSQL_ROOT_PASSWORD=xxx
+MYSQL_DATABASE=wig20
+MYSQL_USER=agent
+MYSQL_PASSWORD=xxx
+\end{lstlisting}
+
+\section{Przepływ Danych}
+
+\begin{enumerate}
+    \item Scraper pobiera dane z Bankier.pl
+    \item db\_updater zapisuje do MySQL
+    \item Użytkownik wysyła POST /ask
+    \item API pobiera dane z bazy SQL
+    \item Ollama generuje odpowiedź
+    \item Odpowiedź wysłana do użytkownika
+\end{enumerate}
+
+\section{Interfejs Użytkownika}
+
+\subsection{Przykładowe zapytania}
+
+\subsubsection{Porównanie spółek}
+
+\begin{lstlisting}[caption=Przykład 1: Porównanie]
+Request:
+POST /ask
+{"prompt": "Porównaj PKO i PKNORLEN"}
+
+Response:
+"PKO Bank Polski: 35.50 PLN
+PKOBP (PKO Banku Polskiego): 34.20 PLN
+PKO jest droższe od PKNORLEN o około 1.30 PLN..."
+\end{lstlisting}
+
+\subsubsePrzykładowe Zastosowania}
+
+\textbf{Porównanie}: POST /ask z \texttt{"prompt": "Porównaj PKO i PKNORLEN"}
+
+\textbf{Przegląd}: POST /ask z \texttt{"prompt": "Jaki jest stan rynku?"}
+
+\textbf{Analiza}: POST /ask z \texttt{"prompt": "Analiza PKO"
+    \item Wdrożyć autentykację API (JWT, API Key)
+    \item Dodać rate limiting na endpoint /ask
+    \item Szyfrować połączenia do MySQL (SSL/TLS)
+    \item Regularnie aktualizować zależności Python
+    \item Monitorować logi w produkcji
+    \item Backupować bazę danych MySQL
+\end{itemize}
+
+\section{Testowanie}
+
+\subsection{Scenariusze testowe}
+
+\subsubsection{Test jednostkowy: Ekstrakcja symboli}
+
+\begin{lstlisting}[caption=Test ekstrakcji symboli]
+extract_sTechnologie}
+
+\begin{itemize}
+    \item Python 3.11 - język programowania
+    \item FastAPI + Uvicorn - REST API
+    \item MySQL 8.0 - baza danych
+    \item BeautifulSoup4 - web scraping
+    \item Ollama + Qwen2.5 - model AI
+    \item Docker Compose - konteneryzacja
+\end{itemize}
+
+Wymagania: Python 3.11+, Docker, 4GB RAM.env
+# Edytować .env z właściwymi hasłami
+    \end{lstlisting}
+
+    \item \textbf{Budowa i uruchomienie}:
+    \begin{lstlisting}[language=bash]
+docker-coDeployment}
+
+Docker Compose uruchamia 4 serwisy:
+\begin{itemize}
+    \item db (MySQL 8.0)
+    \item ollama (Model AI)
+    \item api (FastAPI na porcie 8000)
+ begin{itemize}
+    \item Hasła w zmiennych .env, nie w kodzie
+    \item Health checks dla serwisów
+    \item Error handling z logowaniem
+    \item UNIQUE constraints w bazie
+\end{itemize}
+
+Zalecenia: Autentykacja API (JWT), rate limiting, SSL/TLS, regularne aktualizacje, backupye}
+    \item Dodanie alertów cenowych (integracja email/SMS)
+    \item Implementacja cache'u Redis
+    \item Dodanie filtrów w /ask (data, zakres)
+    \item Wsparcie dla więcej indeksów (WIG, mWIG40, sWIG80)
+\end{itemize}
+
+\subsection{Długoterminowe}
+
+\begin{itRozszerzenia}
+
+Krótkoterminowe: Alerty cenowe, cache Redis, filtry w /ask, więcej indeksów
+
+Długoterminowe: Predykcja ML, frontend webowy, aplikacja mobilna, dashboardmpose.yml   # Service orchestration
+├── REPORT.md            # Markdown report
+├── RAPORT.tex          # LaTeX report (ten dokument)
+├── __pycache__/        # Python cache
+└── .env                # Configuration (not in repo)
+\end{verbatim}
+
+\section{Zaključenie}
+
+Projekt WIG20 Agent stanowi nowoczesny i funkcjonalny system do zarządzania danymi giełdowymi. Architektura mikroserwisów z Docker Compose zapewnia skalowlaność i łatwość wdrażania. Integracja z AI (Ollama) umożliwia użytkownikom interaktywne korzystanie z danych poprzez pytania w języku naturalnym.
+
+System jest w stanie:
+\begin{itemize}
+    \item Automatycznie pobierać i aktualizować dane giełdowe
+    \item Przechowywać dane historyczne dla analiz
+    \item Udostępniać API RESTful do integracji
+    \item Generować inteligentne odpowiedzi na zapytania użytkowników
+\end{itemize}
+}
+
+\begin{verbatim}
+main.py, scraper.py, db_updater.py, mcp_server.py, client.py
+requirements.txt, Dockerfile, docker-compose.yml, .env
+# RestartPodsumowanie}
+
+WIG20 Agent to system do pobierania i analizy danych giełdowych z indeksu WIG20. Architektura mikroserwisów zapewnia skalowlaność, a integracja z AI umożliwia interaktywne odpowiadanie na pytania w języku naturalnym. System automatycznie pobiera dane, przechowuje je w bazie i udostępnia poprzez REST API.
