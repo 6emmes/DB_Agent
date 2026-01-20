@@ -1,0 +1,7 @@
+.env
+deploy_wig20.sh
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+.vscode/
